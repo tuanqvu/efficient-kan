@@ -8,22 +8,23 @@ import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import os
 
 # Load MNIST
 transform = transforms.Compose(
-    [transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))]
+    [transforms.ToTensor(), transforms.Grayscale(), transforms.Normalize((0.5,), (0.5,))]
 )
-trainset = torchvision.datasets.MNIST(
+trainset = torchvision.datasets.CIFAR10(
     root="./data", train=True, download=True, transform=transform
 )
-valset = torchvision.datasets.MNIST(
+valset = torchvision.datasets.CIFAR10(
     root="./data", train=False, download=True, transform=transform
 )
 trainloader = DataLoader(trainset, batch_size=64, shuffle=True)
 valloader = DataLoader(valset, batch_size=64, shuffle=False)
 
 # Define model
-model = KAN([28 * 28, 64, 10])
+model = KAN([32 * 32, 128, 64, 32, 10])
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 # Define optimizer
@@ -33,12 +34,14 @@ scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.8)
 
 # Define loss
 criterion = nn.CrossEntropyLoss()
+
+best_accuracy = 0.
 for epoch in range(10):
     # Train
     model.train()
     with tqdm(trainloader) as pbar:
         for i, (images, labels) in enumerate(pbar):
-            images = images.view(-1, 28 * 28).to(device)
+            images = images.view(-1, 32 * 32).to(device)
             optimizer.zero_grad()
             output = model(images)
             loss = criterion(output, labels.to(device))
@@ -53,7 +56,7 @@ for epoch in range(10):
     val_accuracy = 0
     with torch.no_grad():
         for images, labels in valloader:
-            images = images.view(-1, 28 * 28).to(device)
+            images = images.view(-1, 32 * 32).to(device)
             output = model(images)
             val_loss += criterion(output, labels.to(device)).item()
             val_accuracy += (
@@ -61,6 +64,13 @@ for epoch in range(10):
             )
     val_loss /= len(valloader)
     val_accuracy /= len(valloader)
+    
+    # Save best model
+    if val_accuracy > best_accuracy:
+        best_accuracy = val_accuracy
+        if not os.path.exists('./checkpoint'):
+            os.makedirs('./checkpoint')
+        torch.save(model, './checkpoint/best_model.pt')
 
     # Update learning rate
     scheduler.step()
